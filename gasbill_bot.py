@@ -13,7 +13,6 @@ from telegram import (
 )
 import telegram
 import telegram.ext as tgram_e
-import pandas_datareader as pdr
 
 load_dotenv()
 BOT_KEY = getenv("KEY")
