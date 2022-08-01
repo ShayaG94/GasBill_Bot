@@ -1,0 +1,5 @@
+pyTelegramBotAPI==4.6.1
+python-dotenv==0.20.0
+python_telegram_bot==13.13
+selenium==4.3.0
+telegram==0.0.1
