@@ -1,21 +1,20 @@
-from multiprocessing.connection import wait
-from time import asctime
+import logging
+import chromedriver_autoinstaller
+
+from os import getenv
+from dotenv import load_dotenv
+
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
-from dotenv import load_dotenv
-from os import getenv
 
-import chromedriver_autoinstaller
+import telegram.ext as tgram_e
 from telegram import (
-    Contact,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Update,
 )
-import telegram.ext as tgram_e
-import logging
 
 
 class GasBot:
