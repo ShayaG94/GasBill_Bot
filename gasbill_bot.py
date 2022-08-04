@@ -1,3 +1,5 @@
+from multiprocessing.connection import wait
+from time import asctime
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -7,11 +9,13 @@ from os import getenv
 
 import chromedriver_autoinstaller
 from telegram import (
+    Contact,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Update,
 )
 import telegram.ext as tgram_e
+import logging
 
 
 class GasBot:
@@ -19,6 +23,7 @@ class GasBot:
         self._updater = tgram_e.Updater(key, use_context=True)
         self._dispatcher = self._updater.dispatcher
         self.add_handlers(self._dispatcher)
+        self.setup_logger()
 
     def run(self):
         self._updater.start_polling()
@@ -36,8 +41,10 @@ class GasBot:
         dispatcher.add_handler(tgram_e.CallbackQueryHandler(self.gas_command))
 
     def start(self, update: Update, context: tgram_e.CallbackContext):
-        name = update.message.chat.first_name
-        start_text = f"Hello {name}! Welcome to Shaya's Bot!\n\n\
+        self._user = update.message.chat
+        self._log_message = f"{self._user.id} {self._user.full_name}"
+        self._logger.info(self._log_message)
+        start_text = f"Hello {self._user.first_name}! Welcome to Shaya's Bot!\n\n\
 Press the button to continue:"
 
         INLINE_BUTTONS = [
@@ -50,21 +57,30 @@ Press the button to continue:"
         )
 
     def gas_command(self, update: Update, context: tgram_e.CallbackContext):
+        self._logger.info(self._log_message)
         callback = update.callback_query.data
         if callback == "gas_button":
-            self._browser = self.init_browser()
-            text = self.check_bill()
-            context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=text,
-            )
+            if self._user.id != int(getenv("MY_USER_ID")):
+                wait_text = "אני לא באמת מכיר אותך, אז אין לי מושג אם יש לך חשבון גז.\n\n\
+ביוש\n\n\
+סתם, it's a working progress, כמו שאומרים... נתראה בעתיד"
+                self.send_message(update, context, wait_text)
+            else:
+                wait_text = "וואי וואי כמה דרישות... חכה רגע"
+                self.send_message(update, context, wait_text)
+                self._browser = self.init_browser()
+                client_num = getenv("MY_CLIENT_NUM")
+                bill_answer = self.check_bill(client_num)
+                context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text=bill_answer,
+                )
 
-    def check_bill(self):
+    def check_bill(self, client_num):
         self._browser.get("https://itd-pbx.com/mgas/")
 
         customer_num = self._browser.find_element(By.CSS_SELECTOR, "input[type=text")
-        CLIENT_NUM = getenv("MY_CLIENT_NUM")
-        customer_num.send_keys(CLIENT_NUM)
+        customer_num.send_keys(client_num)
         actions = ActionChains(self._browser)
         actions.send_keys(Keys.TAB * 2, Keys.ENTER).perform()
         try:
@@ -80,9 +96,24 @@ Oh, and are you sure you are a client of מרכז הגז?"
         self._browser.quit()
         return answer
 
+    def send_message(self, update: Update, context: tgram_e.CallbackContext, text: str):
+        context.bot.send_message(chat_id=update.effective_chat.id, text=text)
 
-if __name__ == "__main__":
+    def setup_logger(self):
+        self._logger = logging.getLogger(__name__)
+        self._logger.setLevel(level=logging.DEBUG)
+        fh = logging.FileHandler("gasbot.log")
+        formatter = logging.Formatter("%(asctime)s %(message)s: %(funcName)s")
+        fh.setFormatter(formatter)
+        self._logger.addHandler(fh)
+
+
+def main():
     load_dotenv()
     key = getenv("KEY")
     bot = GasBot(key)
     bot.run()
+
+
+if __name__ == "__main__":
+    main()
