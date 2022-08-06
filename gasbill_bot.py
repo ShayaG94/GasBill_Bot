@@ -1,9 +1,11 @@
 import logging
+from time import sleep
 import chromedriver_autoinstaller
 
 from os import getenv
 from dotenv import load_dotenv
 
+from selenium import common
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -37,7 +39,9 @@ class GasBot:
 
     def add_handlers(self, dispatcher):
         dispatcher.add_handler(tgram_e.CommandHandler("start", self.start))
-        dispatcher.add_handler(tgram_e.CallbackQueryHandler(self.gas_command))
+        dispatcher.add_handler(
+            tgram_e.CallbackQueryHandler(self.gas_command, pattern="gas_button")
+        )
 
     def start(self, update: Update, context: tgram_e.CallbackContext):
         self._user = update.message.chat
@@ -56,41 +60,74 @@ Press the button to continue:"
         )
 
     def gas_command(self, update: Update, context: tgram_e.CallbackContext):
+        self._user = update.callback_query.message.chat
+        self._log_message = f"{self._user.id} {self._user.full_name}"
         self._logger.info(self._log_message)
-        callback = update.callback_query.data
-        if callback == "gas_button":
-            if self._user.id != int(getenv("MY_USER_ID")):
-                wait_text = "אני לא באמת מכיר אותך, אז אין לי מושג אם יש לך חשבון גז.\n\n\
+        if self._user.id != int(getenv("MY_USER_ID")):
+            wait_text = "אני לא באמת מכיר אותך, אז אין לי מושג אם יש לך חשבון גז.\n\n\
 ביוש\n\n\
-סתם, it's a working progress, כמו שאומרים... נתראה בעתיד"
-                self.send_message(update, context, wait_text)
-            else:
-                wait_text = "וואי וואי כמה דרישות... חכה רגע"
-                self.send_message(update, context, wait_text)
-                self._browser = self.init_browser()
-                client_num = getenv("MY_CLIENT_NUM")
-                bill_answer = self.check_bill(client_num)
-                context.bot.send_message(
-                    chat_id=update.effective_chat.id,
-                    text=bill_answer,
-                )
+סתם, it's a work in progress, כמו שאומרים... נתראה בעתיד"
+            self.send_message(update, context, wait_text)
+        else:
+            wait_text = "וואי וואי כמה דרישות... חכה רגע"
+            self.send_message(update, context, wait_text)
+            self._browser = self.init_browser()
+            client_num = getenv("MY_CLIENT_NUM")
+            bill_answer = self.check_bill(client_num)
+            context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=bill_answer,
+            )
 
     def check_bill(self, client_num):
         self._browser.get("https://itd-pbx.com/mgas/")
+        while True:
+            try:
+                customer_num = self._browser.find_element(
+                    By.CSS_SELECTOR, "input[type=text]"
+                )
+            except common.exceptions.NoSuchElementException:
+                for i in range(10):
+                    try:
+                        error_message = self._browser.find_element(
+                            By.CSS_SELECTOR, "#error-code"
+                        )
+                        if error_message.text == "NET::ERR_CERT_DATE_INVALID":
+                            advanced_button = self._browser.find_element(
+                                By.CSS_SELECTOR, "#details-button"
+                            )
+                            advanced_button.click()
+                            procees_link = self._browser.find_element(
+                                By.CSS_SELECTOR, "#proceed-link"
+                            )
+                            procees_link.click()
+                            break
+                        else:
+                            self._logger.error(error_message)
+                    except:
+                        self._logger.warning(
+                            f"Unsuccesful scraping, couldn't find element. Trying {10-i} mroe times."
+                        )
+                        sleep(0.5)
+                        continue
 
-        customer_num = self._browser.find_element(By.CSS_SELECTOR, "input[type=text")
-        customer_num.send_keys(client_num)
-        actions = ActionChains(self._browser)
-        actions.send_keys(Keys.TAB * 2, Keys.ENTER).perform()
-        try:
-            form = self._browser.find_element(
-                By.CSS_SELECTOR, "body > div > form > div:nth-child(1)"
-            )
-        except:
-            answer = "Looks like your input was wrong.\nTry again, make sure you type numbers only.\n\n\
+            except:
+                answer = "Something went wrong, please contact Shaya."
+                break
+            else:
+                customer_num.send_keys(client_num)
+                actions = ActionChains(self._browser)
+                actions.send_keys(Keys.TAB * 2, Keys.ENTER).perform()
+                try:
+                    form = self._browser.find_element(
+                        By.CSS_SELECTOR, "body > div > form > div:nth-child(1)"
+                    )
+                except:
+                    answer = "Looks like your input was wrong.\nTry again, make sure you type numbers only.\n\n\
 Oh, and are you sure you are a client of מרכז הגז?"
-        else:
-            answer = form.text.split("\n")[-1].strip()
+                else:
+                    answer = form.text.split("\n")[-1].strip()
+                break
 
         self._browser.quit()
         return answer
@@ -102,7 +139,9 @@ Oh, and are you sure you are a client of מרכז הגז?"
         self._logger = logging.getLogger(__name__)
         self._logger.setLevel(level=logging.DEBUG)
         fh = logging.FileHandler("gasbot.log")
-        formatter = logging.Formatter("%(asctime)s %(message)s: %(funcName)s")
+        formatter = logging.Formatter(
+            "%(asctime)s %(levelname)s - %(lineno)d.%(message)s: %(funcName)s"
+        )
         fh.setFormatter(formatter)
         self._logger.addHandler(fh)
 
